@@ -15,6 +15,11 @@ Navier–Stokes equations (Jos Stam's *Stable Fluids*).
 - **Coloured dye** (3 advected channels) that mixes and transports realistically.
 - **Live interaction** — inject dye + force, build/erase obstacles, toggle a
   velocity overlay, cycle colours, resize the brush.
+- **Programmable CFD engine** — configurable boundary conditions (inflow,
+  outflow, periodic, moving walls), buoyancy, and a scene/experiment system for
+  wind tunnels and more.
+- **High-quality offline rendering** — vorticity / speed / pressure views through
+  perceptual colormaps, supersampled, with streamline overlays, encoded to **MP4**.
 - **Two backends** behind one interface: pure **NumPy**, plus an optional
   **Numba**-JIT backend with graceful fallback.
 - **Documented** — an mdBook covering every design decision, the full math, and
@@ -63,17 +68,45 @@ python examples/headless_demo.py
 Tweak it: `fluidsim --backend numba --grid 256 --viscosity 1e-5 --overlay`
 (`fluidsim --help` for all flags).
 
+## Programmatic CFD & video
+
+Beyond the interactive toy, fluidsim is a scriptable CFD engine. Describe an
+experiment as a **scene** (boundary conditions, obstacles, sources) and render it
+to a high-quality video:
+
+```bash
+pip install -e ".[video]"
+# Flow past a cylinder → Kármán vortex street, vorticity view → MP4
+fluidsim-render wind_tunnel tunnel.mp4 --view vorticity --frames 600
+```
+
+```python
+from fluidsim.recording import render_scene
+from fluidsim.render.visualize import VisualConfig
+from fluidsim.scenes.library import wind_tunnel
+
+render_scene(wind_tunnel(n=200), "tunnel.mp4", frames=400,
+            visual=VisualConfig(view="vorticity", output_size=(960, 960)))
+```
+
+Built-in scenes: `wind_tunnel`, `lid_driven_cavity`, `smoke_plume`, `shear_layer`
+— or compose your own (see `examples/custom_scene.py`). Views: `dye`, `vorticity`,
+`speed`, `pressure`, with streamline/arrow overlays. Full guide in the
+[CFD Engine docs](docs/src/cfd-engine.md).
+
 ## Project layout
 
 ```text
 src/fluidsim/
-  core/         pure physics (NumPy + optional Numba) — no UI
-  render/       fields → pixels (read-only)
+  core/         pure physics (NumPy + optional Numba) — no UI; boundary conditions, buoyancy
+  render/       fields → pixels (read-only): fast blit + HQ visualize.py + colormaps
   interaction/  input → command objects (no pygame)
   app/          composition root + pygame backend (the only pygame importer)
+  scenes/       programmatic experiments: shapes, sources, Scene + Simulation, library
+  recording.py  render a scene to MP4 / PNG frames (imageio, optional)
 tests/          physics invariants, backend parity, layering enforcement
-examples/       headless_demo.py — the core with no UI
-docs/           mdBook: decisions, mathematics, and usage
+examples/       headless_demo.py, render_video.py, custom_scene.py
+docs/           mdBook: decisions, mathematics, CFD engine, and usage
 ```
 
 ## Documentation

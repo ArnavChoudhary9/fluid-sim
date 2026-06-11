@@ -9,7 +9,21 @@ Nothing in this subpackage imports pygame or mutates the simulation. The
 from __future__ import annotations
 
 from .colormap import Palette
+from .colormaps import apply_colormap, available, get_colormap
 from .overlay import velocity_segments
 from .renderer import Renderer
+from .visualize import VisualConfig, Visualizer, pressure, speed, vorticity
 
-__all__ = ["Renderer", "Palette", "velocity_segments"]
+__all__ = [
+    "Renderer",
+    "Palette",
+    "velocity_segments",
+    "Visualizer",
+    "VisualConfig",
+    "vorticity",
+    "speed",
+    "pressure",
+    "get_colormap",
+    "apply_colormap",
+    "available",
+]

@@ -29,9 +29,10 @@ from .boundary import (
     SCALAR,
     U_FIELD,
     V_FIELD,
+    apply_boundary,
     apply_obstacle_bnd,
+    apply_pressure_boundary,
     fluid_neighbour_count,
-    set_bnd,
     zero_inside_obstacles,
 )
 from .solver_base import BaseSolver
@@ -65,9 +66,15 @@ class NumpySolver(BaseSolver):
         u0, v0 = s.u_prev, s.v_prev
         visc = self.config.viscosity
 
-        # 1. inject staged forces
+        # 1. inject staged forces (+ optional dye-driven buoyancy)
         u += dt * s.u_src
         v += dt * s.v_src
+        if self.config.buoyancy != 0.0:
+            # Buoyant force proportional to the *normalised* smoke amount (mean of
+            # the RGB channels mapped to ~[0, 1]) so ``buoyancy`` is independent of
+            # the dye colour scale. y increases downward, so negative v is "up".
+            smoke = s.density.sum(axis=2) * (1.0 / 765.0)
+            v -= dt * self.config.buoyancy * smoke
         self._velocity_bnd(u, v)
 
         # 2. viscous diffusion (implicit solve)
@@ -148,16 +155,15 @@ class NumpySolver(BaseSolver):
         )
         div[obstacle] = 0.0
         p[:] = 0.0
-        set_bnd(SCALAR, div, n)
-        set_bnd(SCALAR, p, n)
+        apply_boundary(SCALAR, div, n, self.config.boundary)
+        self._pressure_bnd(p)
 
         for _ in range(self.config.iterations):
             new = (div + self._fluid_neighbour_sum(p, fluid)) / count_safe
             p[solvable_red] = new[solvable_red]
             new = (div + self._fluid_neighbour_sum(p, fluid)) / count_safe
             p[solvable_black] = new[solvable_black]
-            set_bnd(SCALAR, p, n)
-            apply_obstacle_bnd(SCALAR, p, obstacle)
+            self._pressure_bnd(p)
 
         u[1:-1, 1:-1] -= 0.5 * (p[1:-1, 2:] - p[1:-1, :-2])
         v[1:-1, 1:-1] -= 0.5 * (p[2:, 1:-1] - p[:-2, 1:-1])
@@ -224,7 +230,7 @@ class NumpySolver(BaseSolver):
     # -- Boundary dispatch ---------------------------------------------------
 
     def _field_bnd(self, b: int, x: np.ndarray) -> None:
-        set_bnd(b, x, self.config.n)
+        apply_boundary(b, x, self.config.n, self.config.boundary)
         apply_obstacle_bnd(b, x, self.state.obstacle, slip=self.config.obstacle_slip)
 
     def _velocity_bnd(self, u: np.ndarray, v: np.ndarray) -> None:
@@ -235,3 +241,7 @@ class NumpySolver(BaseSolver):
 
     def _scalar_bnd(self, d: np.ndarray) -> None:
         self._field_bnd(SCALAR, d)
+
+    def _pressure_bnd(self, p: np.ndarray) -> None:
+        apply_pressure_boundary(p, self.config.n, self.config.boundary)
+        apply_obstacle_bnd(SCALAR, p, self.state.obstacle)

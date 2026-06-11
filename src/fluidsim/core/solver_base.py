@@ -72,6 +72,47 @@ class BaseSolver(ABC):
         """Reset velocity and dye (obstacles are preserved)."""
         self.state.reset_fluid()
 
+    # -- Bulk setup (used by the scene/experiment layer) --------------------
+    # These set whole interior fields at once. They take ``(n, n)`` interior
+    # arrays (no ghost border) so callers never deal with the padding.
+
+    def set_obstacle_mask(self, mask: np.ndarray) -> None:
+        """Replace the obstacle field from an ``(n, n)`` boolean interior mask."""
+        self._require_interior_shape(mask)
+        self.state.obstacle[1:-1, 1:-1] = mask
+        self._evacuate_solids()
+
+    def set_velocity_field(self, u: np.ndarray, v: np.ndarray) -> None:
+        """Set the interior velocity from two ``(n, n)`` arrays (initial conditions)."""
+        self._require_interior_shape(u)
+        self._require_interior_shape(v)
+        self.state.u[1:-1, 1:-1] = u
+        self.state.v[1:-1, 1:-1] = v
+
+    def set_dye_field(self, dye: np.ndarray) -> None:
+        """Set the interior dye from an ``(n, n, 3)`` RGB array (initial conditions)."""
+        self._require_interior_shape(dye)
+        self.state.density[1:-1, 1:-1] = dye
+
+    def add_dye_region(self, mask: np.ndarray, color: tuple[float, float, float]) -> None:
+        """Stage dye of ``color`` wherever an ``(n, n)`` boolean mask is True."""
+        self._require_interior_shape(mask)
+        for channel in range(DYE_CHANNELS):
+            self.state.density_src[1:-1, 1:-1, channel][mask] += color[channel]
+
+    def add_velocity_region(self, mask: np.ndarray, fx: float, fy: float) -> None:
+        """Stage a velocity impulse ``(fx, fy)`` wherever an ``(n, n)`` mask is True."""
+        self._require_interior_shape(mask)
+        self.state.u_src[1:-1, 1:-1][mask] += fx
+        self.state.v_src[1:-1, 1:-1][mask] += fy
+
+    def set_velocity_region(self, mask: np.ndarray, fx: float, fy: float) -> None:
+        """Pin (Dirichlet-set) the interior velocity wherever an ``(n, n)`` mask is True."""
+        self._require_interior_shape(mask)
+        ui, vi = self.state.u[1:-1, 1:-1], self.state.v[1:-1, 1:-1]
+        ui[mask] = fx
+        vi[mask] = fy
+
     # -- Stepping (main loop only) ------------------------------------------
 
     def step(self, dt: float) -> None:
@@ -115,6 +156,13 @@ class BaseSolver(ABC):
         self.state.u[self.state.obstacle] = 0.0
         self.state.v[self.state.obstacle] = 0.0
         self.state.density[self.state.obstacle] = 0.0
+
+    def _require_interior_shape(self, array: np.ndarray) -> None:
+        expected = (self.config.n, self.config.n)
+        if array.shape[:2] != expected:
+            raise ValueError(
+                f"expected an interior array of shape {expected}, got {array.shape}"
+            )
 
     def _disc(self, cx: int, cy: int, radius: int) -> tuple[np.ndarray, tuple[slice, slice]]:
         """Return a boolean disc mask and the array slice it applies to.

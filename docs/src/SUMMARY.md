@@ -26,6 +26,14 @@
 - [Obstacles & Internal Boundaries](math-obstacles.md)
 - [Numerical Dissipation & Its Limits](math-dissipation.md)
 
+# The CFD Engine & Rendering
+
+- [Programmatic CFD: Overview](cfd-engine.md)
+- [Boundary Conditions (Inflow / Outflow / Periodic / Walls)](cfd-boundary-conditions.md)
+- [Scenes & Experiments](scenes.md)
+- [Field Visualisation](visualization.md)
+- [Rendering to Video](video.md)
+
 # Reference & Extension
 
 - [Configuration Reference](reference-configuration.md)

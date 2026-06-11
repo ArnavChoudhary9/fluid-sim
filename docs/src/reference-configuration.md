@@ -18,6 +18,13 @@ mistakes fail loudly instead of producing silent `NaN`s deep in the solver.
 | `backend` | `"auto"` | `"numpy"`, `"numba"`, or `"auto"` |
 | `obstacle_slip` | `"free"` | `"free"` (slide) or `"no"` (stick) at obstacles |
 | `fade` | `0.999` | per-step dye decay in `(0, 1]`; `1.0` = no fade |
+| `boundary` | all walls | per-edge [`BoundaryConditions`](cfd-boundary-conditions.md) |
+| `buoyancy` | `0.0` | dye-driven lift; `>0` makes smoke rise |
+
+`BoundaryConditions` holds the four edges (`left`/`right`/`top`/`bottom`, each a
+`BCType` of `WALL`/`INFLOW`/`OUTFLOW`/`PERIODIC`), plus `inflow_velocity` and
+`wall_velocity` (tangential speeds for moving walls). See
+[Boundary Conditions](cfd-boundary-conditions.md).
 
 ## `BrushConfig` — mouse injection
 

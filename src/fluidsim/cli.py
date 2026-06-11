@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import argparse
 
-from .config import AppConfig, RenderConfig, SimConfig, BrushConfig
+from .config import AppConfig, BrushConfig, RenderConfig, SimConfig
 
 
 def _build_parser() -> argparse.ArgumentParser:

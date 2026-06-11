@@ -65,6 +65,16 @@ mutating anything and never importing pygame.
   (`FrameInput`, `PointerState`, `KeyAction`) into commands. No pygame types
   appear here, so it is fully unit-testable.
 
+## scenes/ and recording.py (the CFD engine)
+
+Two further consumers of the core power the programmatic CFD engine. `scenes/`
+(shapes, sources, `Scene` + `Simulation`, and a library of experiments) and
+`recording.py` (offline video) are pure consumers — no pygame — and `core` is
+forbidden from importing them by the [layering test](architecture-layering.md).
+They are documented in their own section, starting at
+[Programmatic CFD: Overview](cfd-engine.md). The HQ field visualiser lives in
+`render/visualize.py` with colormaps in `render/colormaps.py`.
+
 ## app/
 
 The composition root, and the **only** subpackage allowed to import pygame.

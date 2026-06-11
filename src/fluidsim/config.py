@@ -14,6 +14,7 @@ the solver.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from enum import Enum
 from typing import Literal
 
 # A backend is selected by name. ``auto`` prefers Numba when it is importable
@@ -24,6 +25,77 @@ Backend = Literal["numpy", "numba", "auto"]
 # fluid glide along walls; ``no`` (no-slip) makes it stick. See
 # docs/src/math-obstacles.md.
 SlipMode = Literal["free", "no"]
+
+
+class BCType(Enum):
+    """Condition applied at one edge of the domain.
+
+    * ``WALL`` — a solid, closed wall: no flow through it. The default, and what
+      the interactive app uses on all four sides.
+    * ``INFLOW`` — fluid enters at a prescribed velocity (Dirichlet). The wind
+      tunnel's upstream edge.
+    * ``OUTFLOW`` — fluid leaves freely (zero-gradient / Neumann), with the
+      pressure pinned so mass can exit. The wind tunnel's downstream edge.
+    * ``PERIODIC`` — the edge wraps to the opposite edge. Must be set on *both*
+      edges of an axis (left+right, or top+bottom).
+
+    See docs/src/cfd-boundary-conditions.md.
+    """
+
+    WALL = "wall"
+    INFLOW = "inflow"
+    OUTFLOW = "outflow"
+    PERIODIC = "periodic"
+
+
+@dataclass(frozen=True, slots=True)
+class BoundaryConditions:
+    """Per-edge boundary conditions for the domain.
+
+    Attributes
+    ----------
+    left, right, top, bottom:
+        The :class:`BCType` for each edge.
+    inflow_velocity:
+        ``(vx, vy)`` imposed at every ``INFLOW`` edge.
+    wall_velocity:
+        Tangential wall speeds ``(left, right, top, bottom)``. A non-zero value
+        turns the corresponding ``WALL`` into a *moving* wall dragging the fluid
+        along it (used by the lid-driven-cavity scene). For the left/right edges
+        the value is a y-velocity; for top/bottom it is an x-velocity.
+    """
+
+    left: BCType = BCType.WALL
+    right: BCType = BCType.WALL
+    top: BCType = BCType.WALL
+    bottom: BCType = BCType.WALL
+    inflow_velocity: tuple[float, float] = (0.0, 0.0)
+    wall_velocity: tuple[float, float, float, float] = (0.0, 0.0, 0.0, 0.0)
+
+    def __post_init__(self) -> None:
+        if (self.left is BCType.PERIODIC) != (self.right is BCType.PERIODIC):
+            raise ValueError("PERIODIC must be set on both left and right edges")
+        if (self.top is BCType.PERIODIC) != (self.bottom is BCType.PERIODIC):
+            raise ValueError("PERIODIC must be set on both top and bottom edges")
+
+    @property
+    def is_static_walls(self) -> bool:
+        """True when every edge is a stationary closed wall (the fast path)."""
+        return (
+            self.left is BCType.WALL
+            and self.right is BCType.WALL
+            and self.top is BCType.WALL
+            and self.bottom is BCType.WALL
+            and self.wall_velocity == (0.0, 0.0, 0.0, 0.0)
+        )
+
+    @property
+    def all_pressure_neumann(self) -> bool:
+        """True when no edge needs a special pressure condition (all WALL/INFLOW)."""
+        return all(
+            edge in (BCType.WALL, BCType.INFLOW)
+            for edge in (self.left, self.right, self.top, self.bottom)
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -52,6 +124,12 @@ class SimConfig:
     fade:
         Per-step multiplicative decay applied to dye (``1.0`` = no fade). A small
         amount of fade keeps the screen from saturating during long sessions.
+    boundary:
+        Per-edge :class:`BoundaryConditions`. Defaults to closed walls on all
+        sides (the interactive app); scenes override this for inflow/outflow etc.
+    buoyancy:
+        Strength of a dye-driven buoyancy force. ``0`` disables it; positive
+        values make dye rise (used by the smoke-plume scene).
     """
 
     n: int = 128
@@ -62,6 +140,8 @@ class SimConfig:
     backend: Backend = "auto"
     obstacle_slip: SlipMode = "free"
     fade: float = 0.999
+    boundary: BoundaryConditions = field(default_factory=BoundaryConditions)
+    buoyancy: float = 0.0
 
     def __post_init__(self) -> None:
         if self.n < 4:
@@ -80,6 +160,8 @@ class SimConfig:
             raise ValueError(f"unknown obstacle_slip {self.obstacle_slip!r}")
         if not 0.0 < self.fade <= 1.0:
             raise ValueError(f"fade must be in (0, 1], got {self.fade}")
+        if not isinstance(self.boundary, BoundaryConditions):
+            raise ValueError("boundary must be a BoundaryConditions instance")
 
 
 # A small, pleasant default dye palette (RGB, 0-255). Cycled with Tab / [ / ].

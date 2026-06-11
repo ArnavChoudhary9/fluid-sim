@@ -4,8 +4,8 @@ build-backend = "hatchling.build"
 
 [project]
 name = "fluidsim"
-version = "0.1.0"
-description = "Interactive 2D Stable-Fluids simulation (Jos Stam) with a pygame UI"
+version = "0.2.0"
+description = "Interactive 2D Stable-Fluids CFD engine with a pygame UI and offline video rendering"
 readme = "README.md"
 requires-python = ">=3.11"
 license = "AGPL-3.0-or-later"
@@ -20,11 +20,15 @@ dependencies = [
 [project.optional-dependencies]
 # Optional JIT accelerator. The app runs fine without it (falls back to NumPy).
 numba = ["numba>=0.60"]
+# Offline high-quality video rendering (MP4 via bundled ffmpeg). PNG-sequence
+# output also uses imageio.
+video = ["imageio>=2.31", "imageio-ffmpeg>=0.4"]
 # Development / testing tooling.
 dev = ["pytest>=8", "pytest-cov", "ruff", "mypy"]
 
 [project.scripts]
 fluidsim = "fluidsim.cli:main"
+fluidsim-render = "fluidsim.cli_render:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/fluidsim"]

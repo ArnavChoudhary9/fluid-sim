@@ -27,6 +27,8 @@ from __future__ import annotations
 
 import numpy as np
 
+from ..config import BCType, BoundaryConditions
+
 # b-flag constants, named so call sites read as intent rather than magic numbers.
 SCALAR = 0
 U_FIELD = 1
@@ -160,3 +162,147 @@ def fluid_neighbour_count(obstacle: np.ndarray) -> np.ndarray:
         + fluid[2:, 1:-1]
     )
     return count
+
+
+# ---------------------------------------------------------------------------
+# Configurable domain boundary conditions (inflow / outflow / periodic / walls)
+#
+# ``set_bnd`` above is the closed-wall special case. The functions below
+# generalise it to per-edge conditions for the CFD scenes (wind tunnels, etc.).
+# When every edge is a stationary wall they fall straight back to ``set_bnd`` so
+# the default behaviour — and its tests — are byte-for-byte unchanged.
+# ---------------------------------------------------------------------------
+
+
+def _fill_vertical_edge(
+    b: int,
+    field: np.ndarray,
+    n: int,
+    *,
+    ghost: int,
+    inner: int,
+    opp: int,
+    bctype: BCType,
+    inflow_norm: float,
+    inflow_tan: float,
+    wall_tan: float,
+) -> None:
+    """Fill one left/right ghost column according to ``bctype`` (u is normal)."""
+    rows = slice(1, n + 1)
+    if bctype is BCType.WALL:
+        if b == U_FIELD:                       # normal component: no through-flow
+            field[rows, ghost] = -field[rows, inner]
+        elif b == V_FIELD:                     # tangential: free-slip or moving wall
+            field[rows, ghost] = (
+                field[rows, inner] if wall_tan == 0.0
+                else 2.0 * wall_tan - field[rows, inner]
+            )
+        else:                                  # scalar
+            field[rows, ghost] = field[rows, inner]
+    elif bctype is BCType.OUTFLOW:
+        field[rows, ghost] = field[rows, inner]           # zero-gradient
+    elif bctype is BCType.INFLOW:
+        if b == U_FIELD:
+            field[rows, ghost] = inflow_norm
+            field[rows, inner] = inflow_norm              # pin the boundary cell
+        elif b == V_FIELD:
+            field[rows, ghost] = inflow_tan
+            field[rows, inner] = inflow_tan
+        else:
+            field[rows, ghost] = field[rows, inner]
+    else:  # PERIODIC
+        field[rows, ghost] = field[rows, opp]
+
+
+def _fill_horizontal_edge(
+    b: int,
+    field: np.ndarray,
+    n: int,
+    *,
+    ghost: int,
+    inner: int,
+    opp: int,
+    bctype: BCType,
+    inflow_norm: float,
+    inflow_tan: float,
+    wall_tan: float,
+) -> None:
+    """Fill one top/bottom ghost row according to ``bctype`` (v is normal)."""
+    cols = slice(1, n + 1)
+    if bctype is BCType.WALL:
+        if b == V_FIELD:                       # normal component
+            field[ghost, cols] = -field[inner, cols]
+        elif b == U_FIELD:                     # tangential
+            field[ghost, cols] = (
+                field[inner, cols] if wall_tan == 0.0
+                else 2.0 * wall_tan - field[inner, cols]
+            )
+        else:
+            field[ghost, cols] = field[inner, cols]
+    elif bctype is BCType.OUTFLOW:
+        field[ghost, cols] = field[inner, cols]
+    elif bctype is BCType.INFLOW:
+        if b == V_FIELD:
+            field[ghost, cols] = inflow_norm
+            field[inner, cols] = inflow_norm
+        elif b == U_FIELD:
+            field[ghost, cols] = inflow_tan
+            field[inner, cols] = inflow_tan
+        else:
+            field[ghost, cols] = field[inner, cols]
+    else:  # PERIODIC
+        field[ghost, cols] = field[opp, cols]
+
+
+def _set_corners(field: np.ndarray, n: int) -> None:
+    field[0, 0] = 0.5 * (field[1, 0] + field[0, 1])
+    field[0, n + 1] = 0.5 * (field[1, n + 1] + field[0, n])
+    field[n + 1, 0] = 0.5 * (field[n, 0] + field[n + 1, 1])
+    field[n + 1, n + 1] = 0.5 * (field[n, n + 1] + field[n + 1, n])
+
+
+def apply_boundary(b: int, field: np.ndarray, n: int, bc: BoundaryConditions) -> None:
+    """Enforce the configured per-edge conditions on a velocity/scalar field.
+
+    Falls back to :func:`set_bnd` when all edges are stationary walls, so the
+    closed-wall default is identical (and as fast) as before.
+    """
+    if bc.is_static_walls:
+        set_bnd(b, field, n)
+        return
+
+    ux, uy = bc.inflow_velocity
+    wl, wr, wt, wb = bc.wall_velocity
+    _fill_vertical_edge(b, field, n, ghost=0, inner=1, opp=n,
+                        bctype=bc.left, inflow_norm=ux, inflow_tan=uy, wall_tan=wl)
+    _fill_vertical_edge(b, field, n, ghost=n + 1, inner=n, opp=1,
+                        bctype=bc.right, inflow_norm=ux, inflow_tan=uy, wall_tan=wr)
+    _fill_horizontal_edge(b, field, n, ghost=0, inner=1, opp=n,
+                         bctype=bc.top, inflow_norm=uy, inflow_tan=ux, wall_tan=wt)
+    _fill_horizontal_edge(b, field, n, ghost=n + 1, inner=n, opp=1,
+                         bctype=bc.bottom, inflow_norm=uy, inflow_tan=ux, wall_tan=wb)
+    _set_corners(field, n)
+
+
+def apply_pressure_boundary(p: np.ndarray, n: int, bc: BoundaryConditions) -> None:
+    """Pressure boundary: Neumann at walls/inflow, ``p = 0`` at outflow, wrap if periodic."""
+    if bc.all_pressure_neumann:
+        set_bnd(SCALAR, p, n)
+        return
+
+    rows = slice(1, n + 1)
+    cols = slice(1, n + 1)
+    edges = (
+        (bc.left, (rows, 0), (rows, 1), (rows, n)),
+        (bc.right, (rows, n + 1), (rows, n), (rows, 1)),
+        (bc.top, (0, cols), (1, cols), (n, cols)),
+        (bc.bottom, (n + 1, cols), (n, cols), (1, cols)),
+    )
+    for bctype, ghost, inner, opp in edges:
+        if bctype is BCType.OUTFLOW:
+            p[ghost] = 0.0                      # Dirichlet reference pressure
+        elif bctype is BCType.PERIODIC:
+            p[ghost] = p[opp]
+        else:                                   # WALL / INFLOW → Neumann
+            p[ghost] = p[inner]
+    _set_corners(p, n)

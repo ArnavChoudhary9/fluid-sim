@@ -13,7 +13,7 @@ from pathlib import Path
 import fluidsim.core as core_pkg
 
 FORBIDDEN_TOP_LEVEL = {"pygame"}
-FORBIDDEN_SUBPACKAGES = {"render", "interaction", "app"}
+FORBIDDEN_SUBPACKAGES = {"render", "interaction", "app", "scenes", "recording"}
 
 
 def _imported_names(source: str) -> list[str]:

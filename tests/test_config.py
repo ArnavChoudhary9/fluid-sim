@@ -6,7 +6,14 @@ import dataclasses
 
 import pytest
 
-from fluidsim.config import AppConfig, BrushConfig, RenderConfig, SimConfig
+from fluidsim.config import (
+    AppConfig,
+    BCType,
+    BoundaryConditions,
+    BrushConfig,
+    RenderConfig,
+    SimConfig,
+)
 
 
 def test_defaults_are_valid() -> None:
@@ -52,3 +59,17 @@ def test_configs_are_immutable() -> None:
     cfg = SimConfig()
     with pytest.raises(dataclasses.FrozenInstanceError):
         cfg.n = 64  # type: ignore[misc]
+
+
+def test_boundary_conditions_require_paired_periodic() -> None:
+    with pytest.raises(ValueError):
+        BoundaryConditions(left=BCType.PERIODIC)            # right not periodic
+    with pytest.raises(ValueError):
+        BoundaryConditions(top=BCType.PERIODIC)             # bottom not periodic
+    # Paired is fine.
+    BoundaryConditions(left=BCType.PERIODIC, right=BCType.PERIODIC)
+
+
+def test_sim_config_rejects_bad_boundary() -> None:
+    with pytest.raises(ValueError):
+        SimConfig(boundary="walls")  # type: ignore[arg-type]

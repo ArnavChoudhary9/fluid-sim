@@ -19,7 +19,7 @@ from __future__ import annotations
 import numpy as np
 
 from ..config import SimConfig
-from .boundary import SCALAR, apply_obstacle_bnd, fluid_neighbour_count, set_bnd
+from .boundary import SCALAR, apply_boundary, fluid_neighbour_count
 from .numpy_solver import NumpySolver
 
 try:
@@ -60,13 +60,12 @@ class NumbaSolver(NumpySolver):
 
         _kernels.divergence(u, v, div, obstacle, n)
         p[:] = 0.0
-        set_bnd(SCALAR, div, n)
-        set_bnd(SCALAR, p, n)
+        apply_boundary(SCALAR, div, n, self.config.boundary)
+        self._pressure_bnd(p)
 
         for _ in range(self.config.iterations):
             _kernels.project_iter(p, div, fluid, count, n)
-            set_bnd(SCALAR, p, n)
-            apply_obstacle_bnd(SCALAR, p, obstacle)
+            self._pressure_bnd(p)
 
         _kernels.subtract_gradient(u, v, p, n)
         self._velocity_bnd(u, v)

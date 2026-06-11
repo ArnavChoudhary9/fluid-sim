@@ -1,0 +1,16 @@
+[book]
+title = "fluidsim — Interactive 2D Stable Fluids"
+authors = ["fluid-sim contributors"]
+description = "Design, mathematics, and usage of an interactive 2D fluid simulation in Python."
+language = "en"
+src = "src"
+
+[output.html]
+mathjax-support = true
+default-theme = "navy"
+git-repository-url = "https://github.com/HotShot0901/fluid-sim"
+additional-css = []
+
+[output.html.fold]
+enable = true
+level = 1
